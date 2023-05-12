@@ -36,7 +36,7 @@ def main(args):
         if args.csvfile is not None:
             writer = csv.writer(args.csvfile)
             writer.writerow([fastq_file.name])
-            for i, row in enumerate(np.stack(mean_phred_scores, axis=0)):
+            for i, row in enumerate(mean_phred_scores):
                 writer.writerow([i] + list(row))
         else:
             print(fastq_file.name)
@@ -47,9 +47,8 @@ if __name__ == "__main__":
     argparser = ap.ArgumentParser(description="Script voor Opdracht 1 van Big Data Computing")
     argparser.add_argument("-n", action="store", dest="n", required=True, type=int,
                         help="Aantal cores om te gebruiken.")
-    argparser.add_argument("-o", action="store", dest="csvfile", type=ap.FileType('w', encoding='UTF-8'), required=False, 
+    argparser.add_argument("-o", action="store", dest="csvfile", type=ap.FileType('w', encoding='UTF-8'), required=False,
                         help="CSV file om de output in op te slaan. Default is output naar terminal STDOUT")
-    argparser.add_argument("fastq_files", action="store", type=ap.FileType('r'), nargs='+', 
+    argparser.add_argument("fastq_files", action="store", type=ap.FileType('r'), nargs='+',
                            help="Minstens 1 Illumina Fastq Format file om te verwerken")
-    args = argparser.parse_args()
     sys.exit(main(argparser.parse_args()))
