@@ -3,6 +3,7 @@
 __author__ = "Ruben Hartsuiker"
 
 # Imports
+import time
 import sys
 import csv
 import argparse as ap
@@ -11,7 +12,29 @@ import numpy as np
 
 
 # Functions
-def convert_to_phred(qual_line):
+def multiprocess_job(args, fn, fastq_file):
+    # pool the qual lines and convert them to phred scores
+    with mp.Pool(args.n) as pool:
+        phred_scores = pool.map(fn, fastq_file.readlines()[3::4])
+
+    # calc mean over the columns
+    mean_phred_scores = np.mean(phred_scores, axis=0)
+
+    # if outfile was given write to csv else write to commandline
+    if args.csvfile is not None:
+        writer = csv.writer(args.csvfile)
+        writer.writerow([fastq_file.name])
+        for i, row in enumerate(mean_phred_scores):
+            writer.writerow([i] + list(row))
+    else:
+        print(fastq_file.name)
+        for i, val in enumerate(mean_phred_scores):
+            print(f"{i}, {val}")
+
+    fastq_file.close()
+
+
+def convert_line_to_phred(qual_line):
     """Takes a quality line from a fastq file and converts it to phred scores.
     input: quality line from fastq file
     output: ndarray"""
@@ -21,26 +44,14 @@ def convert_to_phred(qual_line):
 # Main
 def main(args):
     """main function is called when module is used independently"""
+    st = time.time()
     for fastq_file in args.fastq_files:
-        # get all the qual lines
-        qual_lines = fastq_file.readlines()[3::4]
+        multiprocess_job(args, convert_line_to_phred, fastq_file)
 
-        # pool the qual lines and convert them to phred scores
-        with mp.Pool(args.n) as pool:
-            phred_scores = pool.map(convert_to_phred, qual_lines)
-
-        # calc mean over the columns
-        mean_phred_scores = np.mean(phred_scores, axis=0)
-
-        # if outfile was given write to csv else write to commandline
-        if args.csvfile is not None:
-            writer = csv.writer(args.csvfile)
-            writer.writerow([fastq_file.name])
-            for i, row in enumerate(mean_phred_scores):
-                writer.writerow([i] + list(row))
-        else:
-            print(fastq_file.name)
-            print(mean_phred_scores)
+    if args.csvfile is not None:
+        args.csvfile.close()
+    et = time.time()
+    print('Execution time: ', et-st, ' seconds')
 
 
 if __name__ == "__main__":
