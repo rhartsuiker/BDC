@@ -163,28 +163,18 @@ def peon(job_q, result_q):
             time.sleep(1)
 
 
-def get_quality(phred_scores):
+def get_quality(fastq_file):
     """Takes a fastq file and calculates the average quality of every base.
     input: file.fastq
     output: ndarray"""
-    phred_scores = [line.strip() for line in phred_scores]
-    sum_of_quality = [[10 * np.log(ord(c)) for c in p] for p in phred_scores]
-    return np.mean(sum_of_quality, axis=0)
-
-
-# ~ def capitalize(word):
-    # ~ """Capitalizes the word you pass in and returns it"""
-    # ~ return word.upper()
+    return np.mean([[10 * np.log(ord(c)) for c in line.strip()] for line in fastq_file.readlines()[3::4]], axis=0)
 
 
 # Main
 def main(args):
     """main function is called when module is used independently"""
-    phred_scores = [fastq_file.readlines()[3::4] for fastq_file in args.fastq_files]
-    args_and_data = (args, phred_scores)
-
     if args.s:
-        server = mp.Process(target=run_server, args=(get_quality, phred_scores, args))
+        server = mp.Process(target=run_server, args=(get_quality, args.fastq_files, args))
         server.start()
         server.join()
     if args.c:
