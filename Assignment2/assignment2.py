@@ -5,6 +5,7 @@ __author__ = "Ruben Hartsuiker"
 # Imports
 import os, sys, time, queue, csv
 
+import itertools
 import argparse as ap
 import multiprocessing as mp
 import numpy as np
@@ -14,13 +15,15 @@ from multiprocessing.managers import BaseManager, SyncManager
 # Constants
 POISONPILL = "MEMENTOMORI"
 ERROR = "DOH"
-# ~ IP = ''
-# ~ PORTNUM = 5381
+IP = ''
+PORTNUM = 5381
 AUTHKEY = b'whathasitgotinitspocketsesss?'
-# ~ data = ["Always", "look", "on", "the", "bright", "side", "of", "life!"]
+data = ["Always", "look", "on", "the", "bright", "side", "of", "life!"]
 
 
 # Functions
+#################################################################################################################################
+
 def make_server_manager(ip, port, authkey):
     """ Create a manager for the server, listening on the given port.
         Return a manager object with get_job_q and get_result_q methods.
@@ -43,22 +46,22 @@ def make_server_manager(ip, port, authkey):
     return manager
 
 
-def run_server(fn, work_data, args):
-    # Get args so writing results is possible
-    # ~ args, work_data = args_and_data
-
+def run_server(fn, args):
     # Start a shared manager server and access its queues
     manager = make_server_manager(args.host, args.port, AUTHKEY)
     shared_job_q = manager.get_job_q()
     shared_result_q = manager.get_result_q()
 
-    if not work_data:
+    if not args.fastq_files:
         print("Gimme something to do here!")
         return
 
     print("Sending data!")
-    for d in work_data:
-        shared_job_q.put({'fn': fn, 'arg': d})
+    for fastq in args.fastq_files:
+        data = fastq.readlines()[3::4]
+        data_chunks = [data[i*len(data) // args.chunks: (i+1)*len(data) // args.chunks] for i in range(args.chunks)]
+        for chunk in data_chunks:
+            shared_job_q.put({'fn': fn, 'arg': chunk})
 
     time.sleep(2)
 
@@ -67,8 +70,7 @@ def run_server(fn, work_data, args):
         try:
             result = shared_result_q.get_nowait()
             results.append(result)
-            print("Got result!", result)
-            if len(results) == len(work_data):
+            if len(results) == len(data_chunks):
                 print("Got all results!")
                 break
         except queue.Empty:
@@ -83,25 +85,46 @@ def run_server(fn, work_data, args):
     print("Aaaaaand we're done for the server!")
     manager.shutdown()
 
-    results = [result_dict["result"] for result_dict in results]
+    temp = []
+    mean_phred_scores = []
+    for i in range(0,len(results),args.chunks):
+        for result_dict in results[i:i+args.chunks]:
+            temp += result_dict["result"]
+        mean_phred_scores.append(np.mean(temp, axis=0))
 
-    # ~ for i, row in enumerate(np.stack(results, axis=1)):
-            # ~ print([i] + list(row))
+    # phred_scores = [itertools.chain.from_iterable([result_dict["result"] for result_dict in results[i:i+args.chunks]]) for i in range(0,len(results),args.chunks)]
 
-    if args.csvfile is not None:
-        with open(args.csvfile.name, 'w', newline='') as outfile:
-            writer = csv.writer(outfile)
-            for wrapper, result in zip(args.fastq_files, results):
-                writer.writerow([wrapper.name])
-                for i, val in enumerate(result):
-                    writer.writerow([i, val])
+
+    # if outfile was given write to csv else write to commandline
+    if len(args.fastq_files) > 1:
+        if args.csvfile is not None:
+            for fastq_file, scores in zip(args.fastq_files, mean_phred_scores):
+                with open(f"{os.path.abspath(fastq_file.name)}.output.csv",
+                        "w", encoding="UTF-8") as outfile:
+                    writer = csv.writer(outfile)
+                    for i, val in enumerate(scores):
+                        writer.writerow([i, val])
+        else:
+            print(fastq_file.name)
+            for i, val in enumerate(scores):
+                print(f"{i}, {val}")
     else:
-        # ~ print(results)
-        for wrapper, result in zip(args.fastq_files, results):
-                print(wrapper.name)
-                for i, val in enumerate(result):
-                    print(f"{i}, {val}")
+        if args.csvfile is not None:
+            writer = csv.writer(args.csvfile)
+            for i, val in enumerate(mean_phred_scores[0]):
+                writer.writerow([i, val])
+        else:
+            for i, val in enumerate(mean_phred_scores[0]):
+                print(f"{i}, {val}")
 
+    # finalize by closing the files opened by argparser
+    if args.csvfile is not None:
+        args.csvfile.close()
+    for openfile in args.fastq_files:
+        openfile.close()
+
+
+#################################################################################################################################
 
 def make_client_manager(ip, port, authkey):
     """ Create a manager for a client. This manager connects to a server on the
@@ -163,20 +186,24 @@ def peon(job_q, result_q):
             time.sleep(1)
 
 
-def get_quality(fastq_file):
+#################################################################################################################################
+
+def get_quality(chunk):
     """Takes a fastq file and calculates the average quality of every base.
     input: file.fastq
     output: ndarray"""
-    return np.mean([[10 * np.log(ord(c)) for c in line.strip()] for line in fastq_file.readlines()[3::4]], axis=0)
+    return [[10 * np.log(ord(c)) for c in line.strip()] for line in chunk]
 
 
 # Main
 def main(args):
     """main function is called when module is used independently"""
+    # starts the server side - processes data in a job queue for the client side
     if args.s:
-        server = mp.Process(target=run_server, args=(get_quality, args.fastq_files, args))
+        server = mp.Process(target=run_server, args=(get_quality, args))
         server.start()
         server.join()
+    # starts the client side - gets jobs from the server side queue
     if args.c:
         if args.n is not None:
             client = mp.Process(target=run_client, args=(args.n, args.host, args.port))
@@ -184,11 +211,6 @@ def main(args):
             client = mp.Process(target=run_client, args=(mp.cpu_count(), args.host, args.port))
         client.start()
         client.join()
-
-    for openfile in args.fastq_files:
-        openfile.close()
-    if args.csvfile is not None:
-        args.csvfile.close()
 
 
 if __name__ == "__main__":
@@ -201,7 +223,8 @@ if __name__ == "__main__":
     server_args = argparser.add_argument_group(title="Arguments when run in server mode")
     server_args.add_argument("-o", action="store", dest="csvfile", type=ap.FileType('w', encoding='UTF-8'),
                    required=False, help="CSV file om de output in op te slaan. Default is output naar terminal STDOUT")
-    server_args.add_argument("fastq_files", action="store", type=ap.FileType('r'), nargs='*', help="Minstens 1 Illumina Fastq Format file om te verwerken")
+    server_args.add_argument("fastq_files", action="store", type=ap.FileType('r'), nargs='*',
+                              help="Minstens 1 Illumina Fastq Format file om te verwerken")
     server_args.add_argument("--chunks", action="store", type=int, required=False)
 
     client_args = argparser.add_argument_group(title="Arguments when run in client mode")
@@ -210,6 +233,4 @@ if __name__ == "__main__":
     client_args.add_argument("--host", action="store", type=str, help="The hostname where the Server is listening")
     client_args.add_argument("--port", action="store", type=int, help="The port on which the Server is listening")
 
-    args = argparser.parse_args()
-
-    sys.exit(main(args))
+    sys.exit(main(argparser.parse_args()))
