@@ -1,6 +1,8 @@
 """Assignment 2/5 of the course BDC"""
 
+
 __author__ = "Ruben Hartsuiker"
+
 
 # Imports
 import os
@@ -14,6 +16,7 @@ from multiprocessing.managers import BaseManager
 import argparse as ap
 import multiprocessing as mp
 import numpy as np
+
 
 # Constants
 POISONPILL = "MEMENTOMORI"
@@ -78,10 +81,10 @@ def run_server(fn, args):
     time.sleep(5)
     manager.shutdown()
 
-    # concatenate all chunk results per file and calculate the mean pscore over the collums
-    mean_pscores_nan = [np.nanmean(np.concatenate([rd["result"] for rd in results[i:i+args.chunks]]), axis=0)
-                        for i in range(0,len(results),args.chunks)]
-    mean_phred_scores = [pscores[~np.isnan(pscores)] for pscores in mean_pscores_nan]
+    results = [(np.sum([rd["result"][0] for rd in results[i:i+args.chunks]], axis=0),
+               np.sum([rd["result"][1] for rd in results[i:i+args.chunks]], axis=0))
+               for i in range(0,len(results),args.chunks)]
+    mean_phred_scores = [np.divide(r[0], r[1]) for r in results]
 
     # if outfile was given write to csv else write to commandline
     if len(args.fastq_files) > 1:
@@ -111,8 +114,6 @@ def run_server(fn, args):
     for openfile in args.fastq_files:
         openfile.close()
 
-
-#################################################################################################################################
 
 def make_client_manager(ip, port, authkey):
     """ Create a manager for a client. This manager connects to a server on the
@@ -169,21 +170,21 @@ def peon(job_q, result_q):
             time.sleep(1)
 
 
-#################################################################################################################################
-
 def get_quality(args):
     """Takes a fastq file and calculates the average quality of every base.
     input: file.fastq
     output: ndarray"""
-    chunk = args[0]
-    row_len = args[1]
-    phred_scores = np.empty((len(chunk),row_len,))
-    phred_scores.fill(np.nan)
+    pscores = np.empty((len(args[0]),args[1],))
+    pscores.fill(np.nan)
 
-    for i, line in enumerate(chunk):
+    for i, line in enumerate(args[0]):
         for j, char in enumerate(line.strip()):
-            phred_scores[i][j] = 10 * np.log(ord(char)-33)
-    return phred_scores
+            pscores[i][j] = 10 * np.log(ord(char)-33)
+
+    col_count = np.sum(~np.isnan(pscores), axis=0)
+    sum_of_pscores = np.nansum(pscores, axis=0)
+
+    return (sum_of_pscores, col_count)
 
 
 # Main
