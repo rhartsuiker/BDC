@@ -79,8 +79,9 @@ def run_server(fn, args):
     manager.shutdown()
 
     # concatenate all chunk results per file and calculate the mean pscore over the collums
-    mean_phred_scores = [np.nanmean(np.concatenate([rd["result"] for rd in results[i:i+args.chunks]]), axis=0)
-                         for i in range(0,len(results),args.chunks)]
+    mean_pscores_nan = [np.nanmean(np.concatenate([rd["result"] for rd in results[i:i+args.chunks]]), axis=0)
+                        for i in range(0,len(results),args.chunks)]
+    mean_phred_scores = [pscores[~np.isnan(pscores)] for pscores in mean_pscores_nan]
 
     # if outfile was given write to csv else write to commandline
     if len(args.fastq_files) > 1:
