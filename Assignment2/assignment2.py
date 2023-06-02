@@ -174,14 +174,16 @@ def get_quality(args):
     """Takes a fastq file and calculates the average quality of every base.
     input: file.fastq
     output: ndarray"""
+    col_count = np.zeros((len(args[0]),args[1],))
     pscores = np.empty((len(args[0]),args[1],))
     pscores.fill(np.nan)
 
     for i, line in enumerate(args[0]):
         for j, char in enumerate(line.strip()):
+            col_count[i][j] = 1
             pscores[i][j] = 10 * np.log(ord(char)-33)
 
-    col_count = np.sum(~np.isnan(pscores), axis=0)
+    col_count = np.sum(col_count, axis=0)
     sum_of_pscores = np.nansum(pscores, axis=0)
 
     return (sum_of_pscores, col_count)
