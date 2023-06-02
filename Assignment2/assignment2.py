@@ -3,27 +3,25 @@
 __author__ = "Ruben Hartsuiker"
 
 # Imports
-import os, sys, time, queue, csv
+import os
+import sys
+import time
+import queue
+import csv
 
-import itertools
+from multiprocessing.managers import BaseManager
+
 import argparse as ap
 import multiprocessing as mp
 import numpy as np
 
-from multiprocessing.managers import BaseManager, SyncManager
-
 # Constants
 POISONPILL = "MEMENTOMORI"
 ERROR = "DOH"
-IP = ''
-PORTNUM = 5381
 AUTHKEY = b'whathasitgotinitspocketsesss?'
-data = ["Always", "look", "on", "the", "bright", "side", "of", "life!"]
 
 
 # Functions
-#################################################################################################################################
-
 def make_server_manager(ip, port, authkey):
     """ Create a manager for the server, listening on the given port.
         Return a manager object with get_job_q and get_result_q methods.
@@ -35,7 +33,7 @@ def make_server_manager(ip, port, authkey):
     # get_{job|result}_q return synchronized proxies for the actual Queue
     # objects.
     class QueueManager(BaseManager):
-        pass
+        """p"""
 
     QueueManager.register('get_job_q', callable=lambda: job_q)
     QueueManager.register('get_result_q', callable=lambda: result_q)
@@ -46,6 +44,7 @@ def make_server_manager(ip, port, authkey):
 
 
 def run_server(fn, args):
+    """p"""
     # Start a shared manager server and access its queues
     manager = make_server_manager(args.host, args.port, AUTHKEY)
     shared_job_q = manager.get_job_q()
@@ -121,7 +120,7 @@ def make_client_manager(ip, port, authkey):
         Return a manager object.
     """
     class ServerQueueManager(BaseManager):
-        pass
+        """p"""
 
     ServerQueueManager.register('get_job_q')
     ServerQueueManager.register('get_result_q')
@@ -133,6 +132,7 @@ def make_client_manager(ip, port, authkey):
 
 
 def run_client(cores, host, port):
+    """p"""
     manager = make_client_manager(host, port, AUTHKEY)
     job_q = manager.get_job_q()
     result_q = manager.get_result_q()
@@ -140,6 +140,7 @@ def run_client(cores, host, port):
 
 
 def run_workers(job_q, result_q, num_processes):
+    """p"""
     processes = []
     for p in range(num_processes):
         temp = mp.Process(target=peon, args=(job_q, result_q))
@@ -150,19 +151,18 @@ def run_workers(job_q, result_q, num_processes):
 
 
 def peon(job_q, result_q):
-    my_name = mp.current_process().name
+    """p"""
     while True:
         try:
             job = job_q.get_nowait()
             if job == POISONPILL:
                 job_q.put(POISONPILL)
                 return
-            else:
-                try:
-                    result = job['fn'](job['arg'])
-                    result_q.put({'job': job, 'result': result})
-                except NameError:
-                    result_q.put({'job': job, 'result': ERROR})
+            try:
+                result = job['fn'](job['arg'])
+                result_q.put({'job': job, 'result': result})
+            except NameError:
+                result_q.put({'job': job, 'result': ERROR})
 
         except queue.Empty:
             time.sleep(1)
@@ -179,10 +179,9 @@ def get_quality(args):
     phred_scores = np.empty((len(chunk),row_len,))
     phred_scores.fill(np.nan)
 
-    for i in range(len(chunk)):
-        line = chunk[i].strip()
-        for j in range(len(line)):
-            phred_scores[i][j] = 10 * np.log(ord(line[j])-33) #* args[1]
+    for i, line in enumerate(chunk):
+        for j, char in enumerate(line.strip()):
+            phred_scores[i][j] = 10 * np.log(ord(char)-33)
     return phred_scores
 
 
