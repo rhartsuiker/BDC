@@ -28,7 +28,7 @@ def multiprocess_job(cores, csvfile, func, fastq_file, multiple_files):
             with open(f"{os.path.abspath(fastq_file.name)}.output.csv",
                       "w", encoding="UTF-8") as outfile:
                 writer = csv.writer(outfile)
-                for i, row in enumerate(mean_phred_scores):
+                for i, val in enumerate(mean_phred_scores):
                     writer.writerow([i, val])
         else:
             print(fastq_file.name)
