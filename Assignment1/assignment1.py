@@ -29,19 +29,19 @@ def multiprocess_job(cores, csvfile, func, fastq_file, multiple_files):
                       "w", encoding="UTF-8") as outfile:
                 writer = csv.writer(outfile)
                 for i, row in enumerate(mean_phred_scores):
-                    writer.writerow([i] + list(row))
+                    writer.writerow([i, val])
         else:
             print(fastq_file.name)
             for i, val in enumerate(mean_phred_scores):
-                print(f"{i}, {val[0]}")
+                print(f"{i}, {val}")
     else:
         if csvfile is not None:
             writer = csv.writer(csvfile)
-            for i, row in enumerate(mean_phred_scores):
-                writer.writerow([i] + list(row))
+            for i, val in enumerate(mean_phred_scores):
+                writer.writerow([i, val])
         else:
             for i, val in enumerate(mean_phred_scores):
-                print(f"{i}, {val[0]}")
+                print(f"{i}, {val}")
 
     fastq_file.close()
 
@@ -50,7 +50,7 @@ def convert_line_to_phred(qual_line):
     """Takes a quality line from a fastq file and converts it to phred scores.
     input: quality line from fastq file
     output: ndarray"""
-    return [[10 * np.log(ord(c)) for c in p] for p in qual_line]
+    return [10 * np.log(ord(c)-33) for c in qual_line.strip()]
 
 
 # Main

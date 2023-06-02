@@ -42,7 +42,6 @@ def make_server_manager(ip, port, authkey):
 
     manager = QueueManager(address=(ip, port), authkey=authkey)
     manager.start()
-    # print('Server started at port %s' % port)
     return manager
 
 
@@ -53,15 +52,13 @@ def run_server(fn, args):
     shared_result_q = manager.get_result_q()
 
     if not args.fastq_files:
-        # print("Gimme something to do here!")
         return
 
-    # print("Sending data!")
     for fastq in args.fastq_files:
         data = fastq.readlines()[3::4]
         data_chunks = [data[i*len(data) // args.chunks: (i+1)*len(data) // args.chunks] for i in range(args.chunks)]
         for chunk in data_chunks:
-            shared_job_q.put({'fn': fn, 'arg': chunk})
+            shared_job_q.put({'fn': fn, 'arg': [chunk, len(max(data, key=len))-1]})
 
     time.sleep(2)
 
@@ -71,33 +68,20 @@ def run_server(fn, args):
             result = shared_result_q.get_nowait()
             results.append(result)
             if len(results) == len(data_chunks) * len(args.fastq_files):
-                # print("Got all results!")
                 break
         except queue.Empty:
             time.sleep(1)
             continue
     # Tell the client process no more data will be forthcoming
-    # print("Time to kill some peons!")
     shared_job_q.put(POISONPILL)
     # Sleep a bit before shutting down the server - to give clients time to
     # realize the job queue is empty and exit in an orderly way.
     time.sleep(5)
-    # print("Aaaaaand we're done for the server!")
     manager.shutdown()
 
-    max_index = 0
-    max_index_list = []
-    for i in range(0,len(results),args.chunks):
-        for result_dict in results[i:i+args.chunks]:
-            first_nan_index = np.where(np.isnan(result_dict["result"]))[0][0]
-            if max_index < first_nan_index:
-               max_index = first_nan_index
-        max_index_list.append(max_index)
-
-    mean_phred_scores = [np.nanmean([result_dict["result"] for result_dict in results[i:i+args.chunks]], axis=0) for i in range(0,len(results),args.chunks)]
-
-    mean_phred_scores = [mean_phred_scores[0:max_index] for max_index in max_index_list]
-    mean_phred_scores = mean_phred_scores[0]
+    # concatenate all chunk results per file and calculate the mean pscore over the collums
+    mean_phred_scores = [np.nanmean(np.concatenate([rd["result"] for rd in results[i:i+args.chunks]]), axis=0)
+                         for i in range(0,len(results),args.chunks)]
 
     # if outfile was given write to csv else write to commandline
     if len(args.fastq_files) > 1:
@@ -145,7 +129,6 @@ def make_client_manager(ip, port, authkey):
     manager = ServerQueueManager(address=(ip, port), authkey=authkey)
     manager.connect()
 
-    # print('Client connected to %s:%s' % (ip, port))
     return manager
 
 
@@ -162,7 +145,6 @@ def run_workers(job_q, result_q, num_processes):
         temp = mp.Process(target=peon, args=(job_q, result_q))
         processes.append(temp)
         temp.start()
-    # print("Started %s workers!" % len(processes))
     for temp in processes:
         temp.join()
 
@@ -174,36 +156,34 @@ def peon(job_q, result_q):
             job = job_q.get_nowait()
             if job == POISONPILL:
                 job_q.put(POISONPILL)
-                # print("Aaaaaaargh", my_name)
                 return
             else:
                 try:
                     result = job['fn'](job['arg'])
-                    # print("Peon %s Work work on %s!" % (my_name, job['arg']))
                     result_q.put({'job': job, 'result': result})
                 except NameError:
-                    # print("Can't find yer fun Bob!")
                     result_q.put({'job': job, 'result': ERROR})
 
         except queue.Empty:
-            # print("sleepy time for", my_name)
             time.sleep(1)
 
 
 #################################################################################################################################
 
-def get_quality(chunk):
+def get_quality(args):
     """Takes a fastq file and calculates the average quality of every base.
     input: file.fastq
     output: ndarray"""
-    phred_scores = np.empty((len(chunk),10000,))
+    chunk = args[0]
+    row_len = args[1]
+    phred_scores = np.empty((len(chunk),row_len,))
     phred_scores.fill(np.nan)
 
     for i in range(len(chunk)):
         line = chunk[i].strip()
-        phred_scores[i][0:len(line)] = [10 * np.log(ord(c)) for c in line]
-
-    return np.nanmean(phred_scores, axis=0)
+        for j in range(len(line)):
+            phred_scores[i][j] = 10 * np.log(ord(line[j])-33) #* args[1]
+    return phred_scores
 
 
 # Main
