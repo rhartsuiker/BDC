@@ -60,7 +60,7 @@ def run_server(fn, args):
         data = fastq.readlines()[3::4]
         data_chunks = [data[i*len(data) // args.chunks: (i+1)*len(data) // args.chunks] for i in range(args.chunks)]
         for chunk in data_chunks:
-            shared_job_q.put({'fn': fn, 'arg': chunk})
+            shared_job_q.put({'fn': fn, 'arg': (chunk, len(max(data, key=len))-1)})
 
     time.sleep(2)
 
@@ -84,8 +84,8 @@ def run_server(fn, args):
     results = [(np.sum([rd["result"][0] for rd in results[i:i+args.chunks]], axis=0),
                np.sum([rd["result"][1] for rd in results[i:i+args.chunks]], axis=0))
                for i in range(0,len(results),args.chunks)]
-    pscores_w_nantail = [np.divide(r[0], r[1]) for r in results]
-    mean_phred_scores = [arr[~np.isnan(arr)] for arr in pscores_w_nantail]
+    mean_phred_scores = [np.divide(r[0], r[1]) for r in results]
+    # mean_phred_scores = [arr[~np.isnan(arr)] for arr in pscores_w_nantail]
 
     # if outfile was given write to csv else write to commandline
     if len(args.fastq_files) > 1:
@@ -171,24 +171,19 @@ def peon(job_q, result_q):
             time.sleep(1)
 
 
-def get_quality(chunk):
+def get_quality(args):
     """Takes a fastq file and calculates the average quality of every base.
     input: file.fastq
     output: ndarray"""
-    col_count = np.empty((len(chunk),1000))
-    col_count.fill(np.nan)
-    pscores = np.empty((len(chunk),1000))
-    pscores.fill(np.nan)
+    chunk, row_len = args
+
+    pscores = np.zeros((len(chunk),row_len))
 
     for i, line in enumerate(chunk):
         for j, char in enumerate(line.strip()):
-            col_count[i][j] = 1
             pscores[i][j] = 10 * np.log(ord(char)-33)
 
-    col_count = np.sum(col_count, axis=0)
-    sum_of_pscores = np.sum(pscores, axis=0)
-
-    return (sum_of_pscores, col_count)
+    return (np.sum(pscores, axis=0), np.sum(pscores != 0, axis=0))
 
 
 # Main
