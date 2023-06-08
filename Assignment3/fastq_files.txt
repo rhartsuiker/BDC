@@ -1,1 +1,0 @@
-/commons/Themas/Thema12/HPC/rnaseq_selection.fastq

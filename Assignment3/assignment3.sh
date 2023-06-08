@@ -1,14 +1,13 @@
 #!/bin/bash
 
-#SBATCH --time 0:10:00
+#SBATCH --time 02:00:00
 #SBATCH --nodes=1
-#SBATCH --cpus-per-task=1
-#SBATCH --mem=size_in_MB=1024
+#SBATCH --cpus-per-task=8
 
 source /commons/conda/conda_load.sh
 
-export fastq_file=/commons/Themas/Thema12/HPC/rnaseq_selection.fastq
-export fastq_files=fastq_files.txt
-export n_cores=1
+export fastq_file=/commons/Themas/Thema12/HPC/rnaseq.fastq
+export chunk_size=4000
+export n_cores=8
 
-cat ${fastq_files} | parallel "python3 assignment3.py -n ${n_cores} -f {}" > out.csv
+cat ${fastq_file} | awk 'NR % 4 == 0' | parallel --pipe -N${chunk_size} -j${n_cores} "python3 assignment3.py --pre" | python3 assignment3.py --post
