@@ -1,9 +1,11 @@
 #!/bin/bash
 
 #SBATCH --time 00:30:00
+#SBATCH --tasks=16
 #SBATCH --nodes=1
-#SBATCH --cpus-per-task=8
-#SBATCH --mem=1024
+# SBATCH --cpus-per-task=16
+# SBATCH --mem=1024M
+#SBATCH --hosts=assemblix*
 
 source /commons/conda/conda_load.sh
 
