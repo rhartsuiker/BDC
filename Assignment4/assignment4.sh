@@ -2,7 +2,7 @@
 
 #SBATCH --time 00:30:00
 #SBATCH --nodes=1
-#SBATCH --tasks-per-node=8
+#SBATCH --tasks=8
 # SBATCH --nodelist=bin301
 # SBATCH --cpus-per-task=8
 # SBATCH --mem=1024M
